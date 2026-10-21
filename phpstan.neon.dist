@@ -1,0 +1,16 @@
+parameters:
+    level: 7
+    paths:
+        - src
+        - config
+        - database
+    tmpDir: build/phpstan
+    ignoreErrors:
+        # Package config files legitimately read env(); larastan only recognizes the app's config path.
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            path: config/valkyrie.php
+        # The trait is consumed by host-app models outside the analysed paths.
+        -
+            identifier: trait.unused
+            path: src/Concerns/HasRolesAndAbilities.php

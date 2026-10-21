@@ -1,0 +1,122 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "signlphp/laravel-valkyrie",
+    "description": "Roles and abilities for Laravel \u2014 scoped grants, ownership rules, forbids that always win, and versioned ability caching.",
+    "keywords": [
+        "laravel",
+        "authentication",
+        "signlphp",
+        "laravel-valkyrie",
+        "access",
+        "permission",
+        "rbac",
+        "role",
+        "ability",
+        "roles",
+        "abilities"
+    ],
+    "homepage": "https://github.com/signlphp/laravel-valkyrie",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Kim Eric Helle",
+            "email": "kim.helle@signl.no",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.5",
+        "illuminate/console": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.10",
+        "laravel/pint": "^1.29",
+        "laravel/pao": "^1.0",
+        "orchestra/testbench": "^11.0",
+        "pestphp/pest": "^5.0",
+        "pestphp/pest-plugin-laravel": "^5.0",
+        "pestphp/pest-plugin-type-coverage": "^5.0",
+        "phpstan/extension-installer": "^1.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "Signl\\Valkyrie\\": "src/",
+            "Signl\\Valkyrie\\Database\\Factories\\": "database/factories/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Signl\\Valkyrie\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/",
+            "Workbench\\Database\\Factories\\": "workbench/database/factories/",
+            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "@clear",
+            "@prepare"
+        ],
+        "prepare": [
+            "@php vendor/bin/testbench package:discover --ansi"
+        ],
+        "build": [
+            "@php vendor/bin/testbench workbench:build --ansi"
+        ],
+        "serve": [
+            "Composer\\Config::disableProcessTimeout",
+            "@build",
+            "@php vendor/bin/testbench serve --ansi"
+        ],
+        "lint": [
+            "vendor/bin/pint --parallel"
+        ],
+        "lint:check": [
+            "vendor/bin/pint --parallel --test"
+        ],
+        "analyse": [
+            "vendor/bin/phpstan analyse"
+        ],
+        "test:types": [
+            "vendor/bin/pest --type-coverage --min=100"
+        ],
+        "test:unit": [
+            "vendor/bin/pest --parallel"
+        ],
+        "test": [
+            "@analyse",
+            "@lint:check",
+            "@test:types",
+            "@test:unit"
+        ],
+        "test:ci": [
+            "Composer\\Config::disableProcessTimeout",
+            "bash bin/test-ci.sh"
+        ],
+        "clear": [
+            "@php vendor/bin/testbench package:purge-skeleton --ansi"
+        ]
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Signl\\Valkyrie\\ValkyrieServiceProvider"
+            ],
+            "aliases": {
+                "Valkyrie": "Signl\\Valkyrie\\Facades\\Valkyrie"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
