@@ -41,7 +41,7 @@ final class GrantBuilder
      */
     public function everything(array $except = []): Collection
     {
-        return $this->apply(collect([$this->resolve(Morph::Everything, Morph::Everything)]), $except);
+        return $this->apply([$this->resolve(Morph::Everything, Morph::Everything)], $except);
     }
 
     /**
@@ -54,7 +54,7 @@ final class GrantBuilder
     public function to(string|array $abilities, Model|string|null $entity = null): Collection
     {
         return $this->apply(
-            collect((array) $abilities)->map(fn (string $ability): ?Ability => $this->resolve($ability, $entity)),
+            array_map(fn (string $ability): ?Ability => $this->resolve($ability, $entity), (array) $abilities),
         );
     }
 
@@ -67,7 +67,7 @@ final class GrantBuilder
      */
     public function toManage(string $model, array $except = []): Collection
     {
-        return $this->apply(collect([$this->resolve(Morph::Everything, $model)]), $except);
+        return $this->apply([$this->resolve(Morph::Everything, $model)], $except);
     }
 
     /**
@@ -85,7 +85,7 @@ final class GrantBuilder
         $names = $only ?? [Morph::Everything];
 
         return $this->apply(
-            collect($names)->map(fn (string $ability): ?Ability => $this->resolve($ability, $model, onlyOwned: true)),
+            array_map(fn (string $ability): ?Ability => $this->resolve($ability, $model, onlyOwned: true), $names),
             $only === null ? $except : [],
         );
     }
@@ -100,17 +100,17 @@ final class GrantBuilder
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Ability|null>  $abilities
+     * @param  list<Ability|null>  $abilities
      * @param  list<string>  $except
      * @return Collection<int, Permission>
      */
-    private function apply(\Illuminate\Support\Collection $abilities, array $except = []): Collection
+    private function apply(array $abilities, array $except = []): Collection
     {
         $except = array_values(array_unique($except));
         sort($except);
 
         $permissions = DB::transaction(fn (): Collection => new Collection(
-            $abilities
+            collect($abilities)
                 ->filter()
                 ->map(fn (Ability $ability): ?Permission => $this->mode->creates()
                     ? $this->create($ability, $except)
