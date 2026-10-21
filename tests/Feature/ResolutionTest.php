@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Eloquent\Model;
 use Signl\Valkyrie\Facades\Valkyrie;
+use Workbench\App\Models\Office;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
@@ -127,4 +129,19 @@ it('lets a forbid on the actor beat an allow through a role', function (): void 
     $user->forbid()->to('edit-posts');
 
     expect(Valkyrie::check($user, 'edit-posts'))->toBeFalse();
+});
+
+it('does not let a non-user actor own through an attribute rule', function (): void {
+    $office = Office::query()->create(['name' => 'HQ']);
+    $post = Post::query()->create(['title' => 'p', 'user_id' => $office->getKey()]);
+
+    expect(Valkyrie::owns($office, $post))->toBeFalse();
+});
+
+it('lets a closure rule decide ownership for a non-user actor', function (): void {
+    $office = Office::query()->create(['name' => 'HQ']);
+    $post = Post::query()->create(['title' => "office-{$office->getKey()}"]);
+    Valkyrie::ownedVia(Post::class, fn (Post $post, Model $actor): bool => $actor instanceof Office && $post->title === "office-{$actor->getKey()}");
+
+    expect(Valkyrie::owns($office, $post))->toBeTrue();
 });

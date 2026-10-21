@@ -7,12 +7,14 @@ namespace Signl\Valkyrie;
 use Closure;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Signl\Valkyrie\Assignments\RoleAssignment;
 use Signl\Valkyrie\Grants\GrantBuilder;
 use Signl\Valkyrie\Grants\GrantMode;
 use Signl\Valkyrie\Models\Ability;
+use Signl\Valkyrie\Models\AssignedRole;
 use Signl\Valkyrie\Models\Role;
 use Signl\Valkyrie\Ownership\OwnershipResolver;
 use Signl\Valkyrie\Resolution\AbilityCache;
@@ -115,15 +117,22 @@ final class ValkyrieManager
      */
     public function holdsRole(Model $actor, string $role, ?Model $scope = null): bool
     {
-        $roles = config()->string('valkyrie.tables.roles');
         $assignedRoles = config()->string('valkyrie.tables.assigned_roles');
 
-        return Models::assignedRole()::query()
-            ->join($roles, "{$roles}.id", '=', "{$assignedRoles}.role_id")
-            ->where("{$assignedRoles}.entity_type", $actor->getMorphClass())
-            ->where("{$assignedRoles}.entity_id", $actor->getKey())
-            ->where("{$roles}.name", $role)
+        return $this->assignmentsOf($actor, $role)
             ->when($scope !== null, fn (Builder $query) => ScopeConstraint::apply($query, $assignedRoles, $scope))
+            ->exists();
+    }
+
+    /**
+     * Holds the role through a global assignment; scoped assignments do not count.
+     */
+    public function holdsGlobalRole(Model $actor, string $role): bool
+    {
+        $assignedRoles = config()->string('valkyrie.tables.assigned_roles');
+
+        return $this->assignmentsOf($actor, $role)
+            ->tap(fn (Builder $query) => ScopeConstraint::apply($query, $assignedRoles, null))
             ->exists();
     }
 
@@ -192,6 +201,21 @@ final class ValkyrieManager
     public function unforbid(Model $actor, ?Model $on = null): GrantBuilder
     {
         return new GrantBuilder(GrantMode::Unforbid, $actor, $on, $this);
+    }
+
+    /**
+     * @return EloquentBuilder<AssignedRole>
+     */
+    private function assignmentsOf(Model $actor, string $role): EloquentBuilder
+    {
+        $roles = config()->string('valkyrie.tables.roles');
+        $assignedRoles = config()->string('valkyrie.tables.assigned_roles');
+
+        return Models::assignedRole()::query()
+            ->join($roles, "{$roles}.id", '=', "{$assignedRoles}.role_id")
+            ->where("{$assignedRoles}.entity_type", $actor->getMorphClass())
+            ->where("{$assignedRoles}.entity_id", $actor->getKey())
+            ->where("{$roles}.name", $role);
     }
 
     private function assignments(): RoleAssignment

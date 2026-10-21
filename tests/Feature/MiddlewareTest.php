@@ -6,10 +6,12 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Route;
 use Signl\Valkyrie\Facades\Valkyrie;
+use Workbench\App\Models\Office;
 use Workbench\App\Models\User;
 
 beforeEach(function (): void {
     Route::get('/needs-role', fn (): string => 'role-ok')->middleware('role:admin,editor');
+    Route::get('/needs-role-any-scope', fn (): string => 'role-ok')->middleware('role:admin,any');
     Route::get('/needs-ability', fn (): string => 'ability-ok')->middleware('ability:edit-posts,view-posts');
 });
 
@@ -68,4 +70,25 @@ it('honors abilities granted through roles', function (): void {
     $user->assign('editor');
 
     $this->actingAs($user)->get('/needs-ability')->assertOk();
+});
+
+it('rejects a role held only inside a scope', function (): void {
+    $user = User::factory()->create();
+    $user->assign('admin', Office::query()->create(['name' => 'HQ']));
+
+    $this->actingAs($user)->get('/needs-role')->assertForbidden();
+});
+
+it('accepts a role held inside a scope with the any flag', function (): void {
+    $user = User::factory()->create();
+    $user->assign('admin', Office::query()->create(['name' => 'HQ']));
+
+    $this->actingAs($user)->get('/needs-role-any-scope')->assertOk();
+});
+
+it('accepts a global role with the any flag', function (): void {
+    $user = User::factory()->create();
+    $user->assign('admin');
+
+    $this->actingAs($user)->get('/needs-role-any-scope')->assertOk();
 });

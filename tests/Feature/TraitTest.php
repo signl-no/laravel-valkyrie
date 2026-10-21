@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use Signl\Valkyrie\Facades\Valkyrie;
 use Signl\Valkyrie\Models\Ability;
+use Signl\Valkyrie\Models\AssignedRole;
+use Signl\Valkyrie\Models\Permission;
 use Signl\Valkyrie\Models\Role;
+use Workbench\App\Models\Member;
 use Workbench\App\Models\Office;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -103,4 +106,31 @@ it('filters whereIs by scope', function (): void {
     $other->assign('manager', Office::query()->create(['name' => 'Other']));
 
     expect(User::query()->whereIs('manager', $office)->pluck('id')->all())->toBe([$scoped->getKey()]);
+});
+
+it('removes grants and role assignments when the actor is deleted', function (): void {
+    $user = User::factory()->create();
+    $user->allow()->to('edit-posts');
+    $user->assign('editor');
+    expect(Valkyrie::can($user, 'edit-posts'))->toBeTrue();
+
+    $user->delete();
+
+    expect(Permission::query()->count())->toBe(0)
+        ->and(AssignedRole::query()->count())->toBe(0)
+        ->and(Valkyrie::check($user, 'edit-posts'))->toBeNull();
+});
+
+it('keeps a soft-deleted actor\'s rows until it is force deleted', function (): void {
+    $member = Member::query()->create(['name' => 'Ada']);
+    $member->allow()->to('edit-posts');
+    $member->assign('editor');
+
+    $member->delete();
+    expect(Permission::query()->count())->toBe(1)
+        ->and(AssignedRole::query()->count())->toBe(1);
+
+    $member->forceDelete();
+    expect(Permission::query()->count())->toBe(0)
+        ->and(AssignedRole::query()->count())->toBe(0);
 });

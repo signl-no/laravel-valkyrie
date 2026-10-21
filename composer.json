@@ -1,11 +1,12 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "signlphp/laravel-valkyrie",
+    "name": "signl-no/laravel-valkyrie",
     "description": "Roles and abilities for Laravel \u2014 scoped grants, ownership rules, forbids that always win, and versioned ability caching.",
     "keywords": [
         "laravel",
         "authentication",
         "signlphp",
+        "signl-no",
         "laravel-valkyrie",
         "access",
         "permission",
@@ -15,7 +16,7 @@
         "roles",
         "abilities"
     ],
-    "homepage": "https://github.com/signlphp/laravel-valkyrie",
+    "homepage": "https://github.com/signl-no/laravel-valkyrie",
     "license": "MIT",
     "authors": [
         {

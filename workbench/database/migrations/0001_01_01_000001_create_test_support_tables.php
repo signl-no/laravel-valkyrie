@@ -11,6 +11,8 @@ return new class extends Migration
         Schema::dropIfExists('reports');
         Schema::dropIfExists('posts');
         Schema::dropIfExists('offices');
+        Schema::dropIfExists('teams');
+        Schema::dropIfExists('members');
     }
 
     public function up(): void
@@ -19,6 +21,20 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->timestamps();
+        });
+
+        Schema::create('teams', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::create('members', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('posts', function (Blueprint $table): void {

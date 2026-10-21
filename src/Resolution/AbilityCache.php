@@ -9,8 +9,9 @@ use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\Repository;
-use Illuminate\Database\DatabaseManager;
+use Illuminate\Database\Connection;
 use Signl\Valkyrie\Contracts\CachePartition;
+use Signl\Valkyrie\Support\Models;
 
 /**
  * Two layers: a per-request memo and a versioned cache store. Keys embed a partition and
@@ -32,7 +33,6 @@ final class AbilityCache
 
     public function __construct(
         private readonly CacheFactory $cache,
-        private readonly DatabaseManager $db,
         private readonly CachePartition $partition,
         #[Config('valkyrie.cache.enabled', true)] private readonly bool $enabled,
         #[Config('valkyrie.cache.store')] private readonly ?string $storeName,
@@ -44,7 +44,7 @@ final class AbilityCache
      */
     public function bump(): void
     {
-        $this->increment($this->partitionVersionKey($this->partition->key()));
+        $this->increment($this->partitionVersionKey($this->namespace()));
     }
 
     /**
@@ -52,7 +52,17 @@ final class AbilityCache
      */
     public function bumpActor(string $actorType, int|string $actorKey): void
     {
-        $this->increment($this->actorVersionKey($this->partition->key(), $actorType, $actorKey));
+        $this->increment($this->actorVersionKey($this->namespace(), $actorType, $actorKey));
+    }
+
+    /**
+     * The connection Valkyrie's models run on, which may differ from the default.
+     */
+    public function connection(): Connection
+    {
+        $model = Models::permission();
+
+        return (new $model)->getConnection();
     }
 
     public function enabled(): bool
@@ -71,6 +81,20 @@ final class AbilityCache
     }
 
     /**
+     * Drop rows read inside a rolled-back transaction. A deferred bump survives while an
+     * outer transaction is still open, so its uncommitted rows never reach the store.
+     */
+    public function rolledBack(int $remainingLevel): void
+    {
+        $this->memo = [];
+        $this->versions = [];
+
+        if ($remainingLevel === 0) {
+            $this->pendingBump = false;
+        }
+    }
+
+    /**
      * @param  Closure(): list<AbilityRow>  $load
      * @return list<AbilityRow>
      */
@@ -81,8 +105,8 @@ final class AbilityCache
         int|string|null $scopeKey,
         Closure $load,
     ): array {
-        $partition = $this->partition->key();
-        $key = implode(':', [$partition, $actorType, $actorKey, $scopeType ?? '-', $scopeKey ?? '-']);
+        $partition = $this->namespace();
+        $key = implode(':', [$partition, self::part($actorType), self::part($actorKey), self::part($scopeType), self::part($scopeKey)]);
 
         if (isset($this->memo[$key])) {
             return $this->memo[$key];
@@ -100,7 +124,7 @@ final class AbilityCache
 
     private function actorVersionKey(string $partition, string $actorType, int|string $actorKey): string
     {
-        return "valkyrie:version:{$partition}:{$actorType}:{$actorKey}";
+        return 'valkyrie:version:'.implode(':', [$partition, self::part($actorType), self::part($actorKey)]);
     }
 
     /**
@@ -115,7 +139,7 @@ final class AbilityCache
             return;
         }
 
-        $connection = $this->db->connection();
+        $connection = $this->connection();
 
         if ($connection->transactionLevel() === 0) {
             $this->incrementNow($key);
@@ -134,8 +158,29 @@ final class AbilityCache
     private function incrementNow(string $key): void
     {
         if ($this->store()->increment($key) === false) {
-            $this->store()->forever($key, 1);
+            $this->seed($key);
+            $this->store()->increment($key);
         }
+    }
+
+    /**
+     * The partition plus the models' database, so tenants on separate databases never
+     * share entries even when they share the partition.
+     */
+    private function namespace(): string
+    {
+        $connection = $this->connection();
+
+        return implode('|', [self::part($this->partition->key()), self::part($connection->getName()), self::part($connection->getDatabaseName())]);
+    }
+
+    /**
+     * Encode one key component so no value can contain a delimiter (`:` or `|`) or
+     * pass for another; `!` marks null and never results from encoding.
+     */
+    private static function part(int|string|null $value): string
+    {
+        return $value === null ? '!' : rawurlencode((string) $value);
     }
 
     private function partitionVersionKey(string $partition): string
@@ -148,8 +193,28 @@ final class AbilityCache
         return $this->cache->store($this->storeName);
     }
 
+    /**
+     * Start a missing version at a random number: a version key that was evicted must
+     * never come back at a number that older entries were cached under.
+     */
+    private function seed(string $versionKey): void
+    {
+        $this->store()->add($versionKey, random_int(1, PHP_INT_MAX >> 1));
+    }
+
     private function version(string $versionKey): int
     {
-        return $this->versions[$versionKey] ??= (int) $this->store()->get($versionKey, 0);
+        if (isset($this->versions[$versionKey])) {
+            return $this->versions[$versionKey];
+        }
+
+        $version = $this->store()->get($versionKey);
+
+        if ($version === null) {
+            $this->seed($versionKey);
+            $version = $this->store()->get($versionKey, 0);
+        }
+
+        return $this->versions[$versionKey] = (int) $version;
     }
 }

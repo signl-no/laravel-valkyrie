@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Signl\Valkyrie\Facades\Valkyrie;
 use Signl\Valkyrie\Grants\GrantBuilder;
 use Signl\Valkyrie\Models\Ability;
@@ -23,6 +24,28 @@ use Signl\Valkyrie\Support\ScopeConstraint;
  */
 trait HasRolesAndAbilities
 {
+    /**
+     * A deleted actor takes its grants and role assignments with it, so a later actor
+     * that reuses the key never inherits them. Soft deletes keep them until forceDelete.
+     */
+    public static function bootHasRolesAndAbilities(): void
+    {
+        $cleanup = static function (Model $actor): void {
+            foreach ([Models::permission(), Models::assignedRole()] as $model) {
+                $model::query()
+                    ->where('entity_type', $actor->getMorphClass())
+                    ->where('entity_id', $actor->getKey())
+                    ->delete();
+            }
+
+            Valkyrie::refreshFor($actor);
+        };
+
+        in_array(SoftDeletes::class, class_uses_recursive(static::class), true)
+            ? static::registerModelEvent('forceDeleted', $cleanup)
+            : static::deleted($cleanup);
+    }
+
     /**
      * Directly granted abilities; the pivot carries forbidden and scope.
      *
@@ -113,6 +136,7 @@ trait HasRolesAndAbilities
     /**
      * Actors that can perform the ability and are not forbidden it. A query-level
      * approximation of the resolver: ownership-only grants are excluded.
+     * A ScopedEntity's access scope replaces `$scope`, as in the resolver.
      *
      * @param  Builder<static>  $query
      * @param  Model|class-string<Model>|null  $entity
@@ -126,6 +150,7 @@ trait HasRolesAndAbilities
         $assignedRoles = config()->string('valkyrie.tables.assigned_roles');
         $entityType = Morph::type($entity);
         $entityKey = Morph::key($entity);
+        $scope = ScopeConstraint::effective($entity, $scope);
 
         $abilityMatches = function (Builder $query, bool $forbidden) use ($abilities, $permissions, $ability, $entityType, $entityKey, $scope): void {
             $query

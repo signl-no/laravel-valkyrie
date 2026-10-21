@@ -6,6 +6,7 @@ namespace Signl\Valkyrie\Support;
 
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Signl\Valkyrie\Contracts\ScopedEntity;
 
 /**
  * Restricts rows to a global scope (null) or an exact scope match; never inherited.
@@ -25,6 +26,17 @@ final class ScopeConstraint
                 });
             }
         });
+    }
+
+    /**
+     * The scope a check runs in. A ScopedEntity decides outright, so a null access scope
+     * means global and never falls back to the caller's scope.
+     *
+     * @param  Model|class-string<Model>|string|null  $entity
+     */
+    public static function effective(Model|string|null $entity, ?Model $scope): ?Model
+    {
+        return $entity instanceof ScopedEntity ? $entity->accessScope() : $scope;
     }
 
     public static function matches(?string $scopeType, int|string|null $scopeId, ?Model $scope): bool

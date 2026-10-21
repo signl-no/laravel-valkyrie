@@ -10,6 +10,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
@@ -78,18 +79,27 @@ final class ValkyrieServiceProvider extends ServiceProvider
         return $this->actorClasses[$user::class] ??= collect(class_uses_recursive($user))->contains(HasRolesAndAbilities::class);
     }
 
+    /**
+     * `@role('name')` counts global assignments only, like the `role` middleware.
+     * `@role('name', $scope)` also counts that scope; `@role('name', 'any')` any scope.
+     */
     private function registerBladeDirectives(): void
     {
         $this->callAfterResolving('blade.compiler', function (BladeCompiler $blade): void {
-            $blade->if('role', function (?string $role = null): bool {
-                if ($role === null) {
+            $blade->if('role', function (?string $role = null, Model|string|null $scope = null): bool {
+                $user = $this->app->make(AuthFactory::class)->guard()->user();
+
+                if ($role === null || ! $user instanceof Model) {
                     return false;
                 }
 
-                $user = $this->app->make(AuthFactory::class)->guard()->user();
+                $valkyrie = $this->app->make(ValkyrieManager::class);
 
-                return $user instanceof Model
-                    && $this->app->make(ValkyrieManager::class)->holdsRole($user, $role);
+                return match (true) {
+                    $scope instanceof Model => $valkyrie->holdsRole($user, $role, $scope),
+                    $scope === EnsureHasRole::AnyScope => $valkyrie->holdsRole($user, $role),
+                    default => $valkyrie->holdsGlobalRole($user, $role),
+                };
             });
         });
     }
@@ -169,6 +179,7 @@ final class ValkyrieServiceProvider extends ServiceProvider
 
     /**
      * Octane and queue workers reuse the singleton, so the memo flushes per request/job.
+     * A rollback also flushes it, so rows read from the discarded transaction never linger.
      */
     private function registerMemoFlushing(Dispatcher $events): void
     {
@@ -177,6 +188,14 @@ final class ValkyrieServiceProvider extends ServiceProvider
         };
 
         $events->listen(JobProcessing::class, $flush);
+        $events->listen(TransactionRolledBack::class, function (TransactionRolledBack $event): void {
+            $cache = $this->app->make(AbilityCache::class);
+
+            // Only rollbacks on the models' connection can discard Valkyrie writes.
+            if ($event->connectionName === $cache->connection()->getName()) {
+                $cache->rolledBack($event->connection->transactionLevel());
+            }
+        });
 
         if ($this->app->bound('octane')) {
             $events->listen('Laravel\Octane\Events\RequestReceived', $flush);

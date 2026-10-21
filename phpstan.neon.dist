@@ -10,7 +10,9 @@ parameters:
         -
             identifier: larastan.noEnvCallsOutsideOfConfig
             path: config/valkyrie.php
-        # The trait is consumed by host-app models outside the analysed paths.
+        # The traits are consumed by host-app models outside the analysed paths.
         -
             identifier: trait.unused
-            path: src/Concerns/HasRolesAndAbilities.php
+            paths:
+                - src/Concerns/HasRolesAndAbilities.php
+                - src/Concerns/IsAccessScope.php

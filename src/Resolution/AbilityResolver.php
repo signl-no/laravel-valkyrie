@@ -8,7 +8,6 @@ use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
-use Signl\Valkyrie\Contracts\ScopedEntity;
 use Signl\Valkyrie\Ownership\OwnershipResolver;
 use Signl\Valkyrie\Support\Models;
 use Signl\Valkyrie\Support\Morph;
@@ -32,7 +31,7 @@ final class AbilityResolver
      */
     public function check(Model $actor, string $ability, Model|string|null $entity = null, ?Model $scope = null): ?bool
     {
-        $effectiveScope = $entity instanceof ScopedEntity ? ($entity->accessScope() ?? $scope) : $scope;
+        $effectiveScope = ScopeConstraint::effective($entity, $scope);
         $entityType = Morph::type($entity);
         $entityKey = Morph::key($entity);
 

@@ -25,6 +25,7 @@ use Signl\Valkyrie\ValkyrieManager;
  * @method static bool cannot(Model $actor, string $ability, Model|string|null $entity = null, ?Model $on = null)
  * @method static bool|null check(Model $actor, string $ability, Model|string|null $entity = null, ?Model $on = null)
  * @method static bool holdsRole(Model $actor, string $role, ?Model $scope = null)
+ * @method static bool holdsGlobalRole(Model $actor, string $role)
  * @method static void ownedVia(string $model, string|Closure $attribute)
  * @method static bool owns(Model $actor, Model $entity)
  * @method static void refresh()

@@ -41,7 +41,7 @@ final class GrantBuilder
      */
     public function everything(array $except = []): Collection
     {
-        return $this->apply(collect([$this->manager->ability(Morph::Everything, Morph::Everything)]), $except);
+        return $this->apply(collect([$this->resolve(Morph::Everything, Morph::Everything)]), $except);
     }
 
     /**
@@ -54,7 +54,7 @@ final class GrantBuilder
     public function to(string|array $abilities, Model|string|null $entity = null): Collection
     {
         return $this->apply(
-            collect((array) $abilities)->map(fn (string $ability): Ability => $this->manager->ability($ability, $entity)),
+            collect((array) $abilities)->map(fn (string $ability): ?Ability => $this->resolve($ability, $entity)),
         );
     }
 
@@ -67,7 +67,7 @@ final class GrantBuilder
      */
     public function toManage(string $model, array $except = []): Collection
     {
-        return $this->apply(collect([$this->manager->ability(Morph::Everything, $model)]), $except);
+        return $this->apply(collect([$this->resolve(Morph::Everything, $model)]), $except);
     }
 
     /**
@@ -85,7 +85,7 @@ final class GrantBuilder
         $names = $only ?? [Morph::Everything];
 
         return $this->apply(
-            collect($names)->map(fn (string $ability): Ability => $this->manager->ability($ability, $model, onlyOwned: true)),
+            collect($names)->map(fn (string $ability): ?Ability => $this->resolve($ability, $model, onlyOwned: true)),
             $only === null ? $except : [],
         );
     }
@@ -100,7 +100,7 @@ final class GrantBuilder
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Ability>  $abilities
+     * @param  \Illuminate\Support\Collection<int, Ability|null>  $abilities
      * @param  list<string>  $except
      * @return Collection<int, Permission>
      */
@@ -111,6 +111,7 @@ final class GrantBuilder
 
         $permissions = DB::transaction(fn (): Collection => new Collection(
             $abilities
+                ->filter()
                 ->map(fn (Ability $ability): ?Permission => $this->mode->creates()
                     ? $this->create($ability, $except)
                     : $this->remove($ability))
@@ -163,6 +164,26 @@ final class GrantBuilder
             'scope_type' => $this->scope?->getMorphClass(),
             'scope_id' => $this->scope?->getKey(),
         ];
+    }
+
+    /**
+     * Grants find or create the ability; removals only look it up, so removing an
+     * unknown ability never writes a definition row or invalidates the cache.
+     *
+     * @param  Model|class-string<Model>|string|null  $entity
+     */
+    private function resolve(string $name, Model|string|null $entity, bool $onlyOwned = false): ?Ability
+    {
+        if ($this->mode->creates()) {
+            return $this->manager->ability($name, $entity, $onlyOwned);
+        }
+
+        return Models::ability()::query()
+            ->where('name', $name)
+            ->where('entity_type', Morph::type($entity))
+            ->where('entity_id', Morph::key($entity))
+            ->where('only_owned', $onlyOwned)
+            ->first();
     }
 
     private function remove(Ability $ability): null

@@ -5,8 +5,12 @@ declare(strict_types=1);
 use Signl\Valkyrie\Exceptions\AmbiguousRoleException;
 use Signl\Valkyrie\Exceptions\ScopeMismatchException;
 use Signl\Valkyrie\Facades\Valkyrie;
+use Signl\Valkyrie\Models\AssignedRole;
+use Signl\Valkyrie\Models\Permission;
+use Signl\Valkyrie\Models\Role;
 use Workbench\App\Models\Office;
 use Workbench\App\Models\Report;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 it('keeps scoped role assignments out of other scopes', function (): void {
@@ -93,4 +97,57 @@ it('resolves a single scoped definition without a scope', function (): void {
     $user->assign('office-admin');
 
     expect($user->isA('office-admin', $office))->toBeTrue();
+});
+
+it('checks globally when the entity has no access scope, ignoring the passed scope', function (): void {
+    $user = User::factory()->create();
+    $office = Office::query()->create(['name' => 'HQ']);
+    $report = Report::query()->create(['title' => 'Unfiled']);
+
+    Valkyrie::allow($user, $office)->to('view', Report::class);
+
+    expect(Valkyrie::can($user, 'view', $report, on: $office))->toBeFalse();
+});
+
+it('applies the entity access scope in whereCan', function (): void {
+    $user = User::factory()->create();
+    $office = Office::query()->create(['name' => 'HQ']);
+    $report = Report::query()->create(['title' => 'Q1', 'office_id' => $office->getKey()]);
+
+    $user->allow()->to('view', Report::class);
+    $user->forbid($office)->to('view', Report::class);
+
+    expect($user->can('view', $report))->toBeFalse()
+        ->and(User::query()->whereCan('view', $report)->count())->toBe(0);
+});
+
+it('removes grants, assignments and role definitions scoped to a deleted scope', function (): void {
+    $user = User::factory()->create();
+    $office = Office::query()->create(['name' => 'HQ']);
+    Valkyrie::allow($user, $office)->to('approve');
+    $user->assign('manager', $office);
+    $lead = Valkyrie::role('lead', scope: $office);
+    Valkyrie::allow($lead)->to('sign');
+    $user->assign('lead');
+    expect(Valkyrie::can($user, 'approve', on: $office))->toBeTrue();
+
+    $office->delete();
+
+    expect(Permission::query()->count())->toBe(0)
+        ->and(AssignedRole::query()->count())->toBe(0)
+        ->and(Role::query()->where('name', 'lead')->exists())->toBeFalse()
+        ->and(Role::query()->where('name', 'manager')->exists())->toBeTrue()
+        ->and(Valkyrie::check($user, 'approve', on: $office))->toBeNull();
+});
+
+it('keeps scoped rows on soft delete and removes them on force delete', function (): void {
+    $user = User::factory()->create();
+    $team = Team::query()->create(['name' => 'Core']);
+    Valkyrie::allow($user, $team)->to('deploy');
+
+    $team->delete();
+    expect(Permission::query()->count())->toBe(1);
+
+    $team->forceDelete();
+    expect(Permission::query()->count())->toBe(0);
 });

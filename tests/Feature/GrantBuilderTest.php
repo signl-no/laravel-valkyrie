@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Signl\Valkyrie\Facades\Valkyrie;
+use Signl\Valkyrie\Models\Ability;
 use Signl\Valkyrie\Support\Models;
 use Workbench\App\Models\Office;
 use Workbench\App\Models\Post;
@@ -91,4 +92,24 @@ it('disallowing a missing grant is a no-op', function (): void {
     $user = User::factory()->create();
 
     expect(Valkyrie::disallow($user)->to('edit-posts'))->toHaveCount(0);
+});
+
+it('does not create abilities when removing unknown ones', function (): void {
+    $user = User::factory()->create();
+
+    Valkyrie::disallow($user)->to('never-granted');
+    Valkyrie::unforbid($user)->toManage(Post::class);
+    Valkyrie::disallow($user)->toOwn(Post::class, only: ['edit']);
+    Valkyrie::unforbid($user)->everything();
+
+    expect(Ability::query()->count())->toBe(0);
+});
+
+it('still removes an existing grant', function (): void {
+    $user = User::factory()->create();
+    $user->allow()->toOwn(Post::class, only: ['edit']);
+
+    Valkyrie::disallow($user)->toOwn(Post::class, only: ['edit']);
+
+    expect($user->getAbilities())->toBeEmpty();
 });

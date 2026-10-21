@@ -11,6 +11,8 @@ use Illuminate\Support\Arr;
 
 /**
  * Decides ownership: by default the entity's `user_id` must equal the actor's key.
+ * Attribute rules only hold for actors of the auth user model, since a bare key cannot
+ * tell user 5 from service account 5; other actor types need a closure rule.
  */
 #[Singleton]
 final class OwnershipResolver
@@ -24,6 +26,10 @@ final class OwnershipResolver
 
         if ($resolver instanceof Closure) {
             return (bool) $resolver($entity, $actor);
+        }
+
+        if (! $this->isUser($actor)) {
+            return false;
         }
 
         $attributes = $entity->getAttributes();
@@ -42,6 +48,13 @@ final class OwnershipResolver
     public function register(string $model, string|Closure $attribute): void
     {
         $this->resolvers[$model] = $attribute;
+    }
+
+    private function isUser(Model $actor): bool
+    {
+        $model = config('auth.providers.users.model');
+
+        return is_string($model) && $actor instanceof $model;
     }
 
     /**
